@@ -1,28 +1,18 @@
-import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Image, TextInput, Alert, Keyboard } from 'react-native';
-import React, { useState, useEffect } from 'react';
+import { 
+  ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, 
+  View, Image, TextInput, Alert, Keyboard, SafeAreaView , Platform
+} from 'react-native';
+import React, { useState, useEffect, useContext } from 'react';
 import { getFirestore, doc, setDoc, updateDoc, arrayUnion, getDoc } from 'firebase/firestore';
 import { app } from '../Firebase/FirebaseConfig';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { AuthContext } from '../Context/AuthContext';
 
 const ProductScreen = ({ route, navigation }) => {
-  const [userloggeduid, setUserloggeduid] = useState(null);
+  const { userloggeduid } = useContext(AuthContext);
   const [quantity, setQuantity] = useState('1');
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUserloggeduid(user.uid);
-      } else {
-        setUserloggeduid(null);
-      }
-    });
-
-    return () => unsubscribe();
-  }, []);
 
   useEffect(() => {
     if (!route.params) {
@@ -146,76 +136,80 @@ const ProductScreen = ({ route, navigation }) => {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <StatusBar backgroundColor="#FF3F00" />
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color="white"/>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.productContainer}>
-        <View style={styles.imageContainer}>
-          <Image 
-            source={{ uri: data.FoodImageURL }} 
-            style={styles.productImage}
-            resizeMode="cover"
-          />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#FF3F00', paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 }}>
+      <StatusBar 
+        backgroundColor={'#FF3F00'} 
+        barStyle="light-content"
+        translucent={false}
+      />
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color="white"/>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.detailsContainer}>
-          <View style={styles.titleRow}>
-            <Text style={styles.productName} numberOfLines={2}>{data.FoodName}</Text>
-            <Text style={styles.productPrice}>{data.FoodPrize}Đ</Text>
+        <View style={styles.productContainer}>
+          <View style={styles.imageContainer}>
+            <Image 
+              source={{ uri: data.FoodImageURL }} 
+              style={styles.productImage}
+              resizeMode="cover"
+            />
           </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Mô tả</Text>
-            <Text style={styles.description}>{data.FoodDescrip || 'Không có mô tả'}</Text>
-          </View>
+          <View style={styles.detailsContainer}>
+            <View style={styles.titleRow}>
+              <Text style={styles.productName} numberOfLines={2}>{data.FoodName}</Text>
+              <Text style={styles.productPrice}>{data.FoodPrize}Đ</Text>
+            </View>
 
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Cửa hàng</Text>
-            <Text style={styles.storeName}>FastFood Delivery</Text>
-          </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Mô tả</Text>
+              <Text style={styles.description}>{data.FoodDescrip || 'Không có mô tả'}</Text>
+            </View>
 
-          <View style={styles.quantityContainer}>
-            <Text style={styles.sectionTitle}>Số lượng</Text>
-            <View style={styles.quantityControls}>
-              <TouchableOpacity 
-                style={[styles.quantityButton, parseInt(quantity) <= 1 && styles.disabledButton]}
-                onPress={() => adjustQuantity(-1)}
-                disabled={parseInt(quantity) <= 1}
-              >
-                <Text style={styles.quantityButtonText}>-</Text>
-              </TouchableOpacity>
-              
-              <TextInput
-                style={styles.quantityInput}
-                value={quantity}
-                onChangeText={handleQuantityChange}
-                keyboardType="numeric"
-                selectTextOnFocus
-              />
-              
-              <TouchableOpacity 
-                style={styles.quantityButton} 
-                onPress={() => adjustQuantity(1)}
-              >
-                <Text style={styles.quantityButtonText}>+</Text>
-              </TouchableOpacity>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Cửa hàng</Text>
+              <Text style={styles.storeName}>FastFood Delivery</Text>
+            </View>
+
+            <View style={styles.quantityContainer}>
+              <Text style={styles.sectionTitle}>Số lượng</Text>
+              <View style={styles.quantityControls}>
+                <TouchableOpacity 
+                  style={[styles.quantityButton, parseInt(quantity) <= 1 && styles.disabledButton]}
+                  onPress={() => adjustQuantity(-1)}
+                  disabled={parseInt(quantity) <= 1}
+                >
+                  <Text style={styles.quantityButtonText}>-</Text>
+                </TouchableOpacity>
+                
+                <TextInput
+                  style={styles.quantityInput}
+                  value={quantity}
+                  onChangeText={handleQuantityChange}
+                  keyboardType="numeric"
+                  selectTextOnFocus
+                />
+                
+                <TouchableOpacity 
+                  style={styles.quantityButton} 
+                  onPress={() => adjustQuantity(1)}
+                >
+                  <Text style={styles.quantityButtonText}>+</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
 
-        <TouchableOpacity 
-          style={styles.addToCartButton} 
-          onPress={addToCartHandler}
-        >
-          <Text style={styles.addToCartButtonText}>Thêm vào giỏ hàng</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+          <TouchableOpacity 
+            style={styles.addToCartButton} 
+            onPress={addToCartHandler}
+          >
+            <Text style={styles.addToCartButtonText}>Thêm vào giỏ hàng</Text>
+          </TouchableOpacity>
+        </View>
+    </SafeAreaView>
   );
 };
 
@@ -223,6 +217,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'white',
+  },
+  scrollContainer: {
+    paddingBottom: 20,
   },
   loadingContainer: {
     flex: 1,
@@ -233,10 +230,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF3F00',
     paddingVertical: 15,
     paddingHorizontal: 15,
-  },
-  headerText: {
-    color: 'white',
-    fontSize: 16,
   },
   productContainer: {
     flex: 1,
@@ -281,6 +274,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 15,
     marginBottom: 15,
+    width: '100%', // Đảm bảo độ rộng đầy đủ
   },
   sectionTitle: {
     fontSize: 18,
@@ -301,15 +295,18 @@ const styles = StyleSheet.create({
   quantityControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
+    marginTop: 5,
+    height: 40
   },
   quantityButton: {
     backgroundColor: '#FF3F00',
     width: 35,
-    height: 35,
+    height: 40,
     borderRadius: 25,
     justifyContent: 'center',
     alignItems: 'center',
+    marginHorizontal: 15,
   },
   quantityButtonText: {
     color: 'white',
@@ -317,14 +314,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   quantityInput: {
-    width: 50,
-    height: 35,
+    width: 60,
+    height: 40,
     textAlign: 'center',
     fontSize: 16,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#ddd',
-    marginHorizontal: 10,
+    marginHorizontal: 15,
+    paddingVertical: 8,
+    textAlignVertical: 'center',
+    includeFontPadding: false
   },
   disabledButton: {
     backgroundColor: '#ccc',
@@ -332,15 +332,19 @@ const styles = StyleSheet.create({
   addToCartButton: {
     backgroundColor: '#FF3F00',
     borderRadius: 12,
-    paddingVertical: 15,
+    paddingVertical: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    width: 'auto',
+    alignSelf: 'center', 
+    marginTop: -10, 
+    paddingHorizontal: 85,
   },
   addToCartButtonText: {
     color: 'white',
     fontSize: 18,
     fontWeight: '600',
+    textAlign: 'center'
   },
 });
 

@@ -1,9 +1,9 @@
-import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, TextInput, Alert, ScrollView } from 'react-native';
-import React, { useEffect, useState } from 'react';
+import { FlatList, Image, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, TextInput, Alert, ScrollView, Platform, StatusBar } from 'react-native';
+import React, { useContext, useEffect, useState } from 'react';
+import { AuthContext } from '../Context/AuthContext';
 import { db } from '../Firebase/FirebaseConfig';
 import { getFirestore, doc, getDoc, updateDoc, arrayRemove, deleteField, collection, onSnapshot, setDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 // Component hiển thị giỏ hàng trống
 const EmptyCartView = () => (
@@ -38,58 +38,57 @@ const QuantityControl = ({ quantity, onIncrease, onDecrease }) => (
 // Component hiển thị danh sách món ăn
 const CartItemsList = ({ cartAlldata, foodDataAll, deleteButtonHandler, updateQuantityHandler }) => {
   return (
-    <ScrollView 
-      style={styles.scrollView}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {cartAlldata.map((item) => {
+    <FlatList 
+      data={cartAlldata}
+      keyExtractor={(item) => item.cartItemId}
+      renderItem={({ item }) => {
         const nData = foodDataAll.find((food) => food.id === item.item_id);
         if (!nData) return null;
         
         return (
-          <View key={item.cartItemId} style={styles.containerCard}>
-            <Image source={{uri: nData.FoodImageURL}} style={styles.cardimage}/>
-            
-            <View style={styles.containerCard_in}>
-              <View style={styles.containerCard_in1}>
-                <Text style={{color: '#888', fontSize: 12}}>FastFood Delivery</Text>
-              </View>
-              
-              <View style={styles.containerCard_in2}>
-                <Text style={styles.containerCard_in2_itemName}>{nData.FoodName}</Text>
-                <Text style={styles.containerCard_in2_itemPrice}>{parseInt(nData.FoodPrize).toLocaleString()}Đ</Text>
+          <View style={styles.containerCardList}>
+            <View style={styles.containerCard}>
+              <Image source={{uri: nData.FoodImageURL}} style={styles.cardimage}/>
+              <View style={styles.containerCard_in}>
+                <View style={styles.containerCard_in1}>
+                  <Text>FastFood Delivery</Text>
+                </View>
                 
-                <View style={styles.quantityRow}>
-                  <Text style={styles.quantityLabel}>Số lượng:</Text>
-                  <QuantityControl 
-                    quantity={item.FoodQuantity || 1}
-                    onIncrease={() => updateQuantityHandler(item, (item.FoodQuantity || 1) + 1)}
-                    onDecrease={() => updateQuantityHandler(item, (item.FoodQuantity || 1) - 1)}
-                  />
+                <View style={styles.containerCard_in2}>
+                  <Text style={styles.containerCard_in2_itemName}>{nData.FoodName}</Text>
+                  <Text style={styles.containerCard_in2_itemPrice}>{nData.FoodPrize}Đ</Text>
+                  
+                  <View style={styles.quantityRow}>
+                    <Text style={styles.quantityLabel}>Số lượng: </Text>
+                    <QuantityControl 
+                      quantity={item.FoodQuantity || 1}
+                      onIncrease={() => updateQuantityHandler(item, (item.FoodQuantity || 1) + 1)}
+                      onDecrease={() => updateQuantityHandler(item, (item.FoodQuantity || 1) - 1)}
+                    />
+                  </View>
+                </View>
+          
+                <View style={styles.containerCard_in3}>
+                  <TouchableOpacity 
+                    style={styles.containerCard_in3_btn} 
+                    onPress={() => deleteButtonHandler(item)}
+                  >
+                    <Ionicons name="trash-bin" size={24} color="black" />
+                    <Text style={styles.containerCard_in3_btn_txt}>Xóa</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-        
-              <View style={styles.containerCard_in3}>
-                <TouchableOpacity 
-                  style={styles.containerCard_in3_btn} 
-                  onPress={() => deleteButtonHandler(item)}
-                >
-                  <Ionicons name="trash-outline" size={18} color="#e74c3c" />
-                  <Text style={styles.containerCard_in3_btn_txt}>Xóa</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            </View>  
           </View>
         );
-      })}
-    </ScrollView>
+      }}
+    />
   );
 };
 
 // Component hiển thị tổng tiền và nút thanh toán
 const CheckoutFooter = ({ totalAmount, onPress }) => (
-  <View style={styles.footerContainer}>
+  <View style={styles.totalContainer}>
     <View style={styles.totalTextWrapper}>
       <Text style={styles.totalLabel}>Tổng tiền:</Text>
       <Text style={styles.totalAmount}>{totalAmount.toLocaleString()}Đ</Text>
@@ -188,7 +187,7 @@ const PaymentSection = ({
         
         <View style={styles.paymentMethods}>
           <TouchableOpacity 
-            style={[ 
+            style={[
               styles.paymentMethod, 
               paymentMethod === 'cash' && styles.selectedMethod
             ]}
@@ -203,7 +202,7 @@ const PaymentSection = ({
           </TouchableOpacity>
           
           <TouchableOpacity 
-            style={[ 
+            style={[
               styles.paymentMethod, 
               paymentMethod === 'bank' && styles.selectedMethod
             ]}
@@ -248,96 +247,260 @@ const PaymentSection = ({
 
 // Component chính
 const UserCartScreen = ({ navigation, route }) => {
-  const [userloggeduid, setUserloggeduid] = useState(null);
+  const { userloggeduid } = useContext(AuthContext);
+
+  const [cartdata, setCartdata] = useState(null);
+  const [cartAlldata, setCartAlldata] = useState(null);
+  const [foodDataAll, setFoodDataAll] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [totalAmount, setTotalAmount] = useState(0);
+  const [showPayment, setShowPayment] = useState(false);
+
+  const cardDataHandler = async () => {
+    if (!userloggeduid) return;
+    
+    try {
+      const cartRef = doc(db, 'UserCart', userloggeduid);
+      const cartDoc = await getDoc(cartRef);
+      
+      if (cartDoc.exists()) {
+        setCartdata(cartDoc.data());
+        setCartAlldata(cartDoc.data().cartItems || []);
+      } else {
+        console.log("Không có dữ liệu giỏ hàng");
+        setCartAlldata([]);
+      }
+    } catch(error) {
+      console.error("Lỗi khi lấy giỏ hàng: ", error);
+      setCartAlldata([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const FoodDataHandler = () => {
+    const foodRef = collection(db, 'FoodData');
+    
+    const unsubscribe = onSnapshot(foodRef,
+      (snapshot) => {
+        const foods = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setFoodDataAll(foods);
+      },
+      (error) => {
+        console.error("Lỗi khi lấy FoodData: ", error);
+      }
+    );
+    
+    return unsubscribe;
+  };
+  
+  useEffect(() => {
+    let isMounted = true;
+    const unsubscribe = FoodDataHandler();
+  
+    const fetchData = async () => {
+      try {
+        await cardDataHandler();
+      } catch (error) {
+        if (isMounted) console.error("Error:", error);
+      }
+    };
+  
+    fetchData();
+  
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [userloggeduid]);
+
+  const deleteButtonHandler = async (item) => {
+    try {
+      if (!userloggeduid || !item) return;
+  
+      const db = getFirestore();
+      const docRef = doc(db, 'UserCart', userloggeduid);
+  
+      const docSnapshot = await getDoc(docRef);
+      
+      if (!docSnapshot.exists()) {
+        console.log("Không tìm thấy giỏ hàng");
+        return;
+      }
+  
+      const cartData = docSnapshot.data();
+      
+      if (cartData.cartItems && cartData.cartItems.length === 1) {
+        await updateDoc(docRef, {
+          cartItems: deleteField()
+        });
+      } else {
+        await updateDoc(docRef, {
+          cartItems: arrayRemove(item)
+        });
+      }
+  
+      await cardDataHandler();
+      
+    } catch (error) {
+      console.error("Lỗi khi xóa sản phẩm:", error);
+      Alert.alert("Lỗi", "Không thể xóa sản phẩm. Vui lòng thử lại!");
+    }
+  };
+
+  const updateQuantityHandler = async (item, newQuantity) => {
+    try {
+      if (!userloggeduid || !item || newQuantity < 1) return;
+
+      const db = getFirestore();
+      const cartRef = doc(db, 'UserCart', userloggeduid);
+      
+      // Lấy giỏ hàng hiện tại
+      const cartDoc = await getDoc(cartRef);
+      if (!cartDoc.exists()) return;
+
+      const currentCart = cartDoc.data().cartItems || [];
+      
+      // Cập nhật số lượng cho item tương ứng
+      const updatedCart = currentCart.map(cartItem => {
+        if (cartItem.cartItemId === item.cartItemId) {
+          return { ...cartItem, FoodQuantity: newQuantity };
+        }
+        return cartItem;
+      });
+
+      // Cập nhật lên Firestore
+      await updateDoc(cartRef, {
+        cartItems: updatedCart
+      });
+
+      // Cập nhật state local để hiển thị ngay lập tức
+      setCartAlldata(updatedCart);
+      
+    } catch (error) {
+      console.error("Lỗi khi cập nhật số lượng:", error);
+      Alert.alert("Lỗi", "Không thể cập nhật số lượng. Vui lòng thử lại!");
+    }
+  };
 
   useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUserloggeduid(user.uid);
-      } else {
-        setUserloggeduid(null);
-      }
+    if (!cartAlldata || !foodDataAll.length) {
+      setTotalAmount(0);
+      return;
+    }
+    
+    const total = cartAlldata.reduce((sum, item) => {
+      const foodItem = foodDataAll.find(food => food.id === item.item_id);
+      return sum + (foodItem ? parseInt(foodItem.FoodPrize) * (item.FoodQuantity || 1) : 0);
+    }, 0);
+    
+    setTotalAmount(total);
+  }, [cartAlldata, foodDataAll]);
+
+  // Lắng nghe khi màn hình được focus
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      cardDataHandler();
     });
+    return unsubscribe;
+  }, [navigation]);
 
-    return () => unsubscribe();
-  }, []);
+  // Lắng nghe khi có param refresh
+  useEffect(() => {
+    if (route.params?.refresh) {
+      cardDataHandler();
+      navigation.setParams({ refresh: false });
+    }
+  }, [route.params?.refresh]);
 
-  if (!userloggeduid) {
+  const handleCheckout = async (paymentInfo) => {
+    try {
+      const db = getFirestore();
+      const orderRef = doc(db, 'UserOrder', `${userloggeduid}_${Date.now()}`);
+      
+      // 1. Lưu đơn hàng
+      await setDoc(orderRef, {
+        userId: userloggeduid,
+        items: cartAlldata,
+        totalAmount,
+        deliveryAddress: paymentInfo.deliveryAddress,
+        phoneNumber: paymentInfo.phoneNumber,
+        paymentMethod: paymentInfo.paymentMethod,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      });
+  
+      // 2. Xóa giỏ hàng
+      const cartRef = doc(db, 'UserCart', userloggeduid); 
+      await updateDoc(cartRef, {
+        cartItems: deleteField()
+      });
+  
+      // 3. Cập nhật state để hiển thị giỏ hàng trống
+      setCartAlldata([]);
+      setTotalAmount(0);
+      setShowPayment(false);
+  
+      Alert.alert('Thành công', 'Đơn hàng đã được đặt thành công!');
+      
+    } catch (error) {
+      console.error('Lỗi khi đặt hàng:', error);
+      Alert.alert('Lỗi', 'Đã có lỗi xảy ra khi đặt hàng');
+    }
+  };
+
+  if (loading || cartAlldata === null) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#FF3F00" />
-        <Text>Đang tải dữ liệu...</Text>
       </View>
     );
   }
 
-  const cartRef = doc(db, 'users', userloggeduid);
-  const [cartAlldata, setCartAlldata] = useState([]);
-  const [foodDataAll, setFoodDataAll] = useState([]);
-
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'Foods'), (snapshot) => {
-      const foodList = snapshot.docs.map(doc => doc.data());
-      setFoodDataAll(foodList);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    const unsubscribe = onSnapshot(cartRef, (snapshot) => {
-      const cartData = snapshot.data()?.cart || [];
-      setCartAlldata(cartData);
-    });
-
-    return () => unsubscribe();
-  }, [userloggeduid]);
-
-  const deleteButtonHandler = async (item) => {
-    const cartRef = doc(db, 'users', userloggeduid);
-    await updateDoc(cartRef, {
-      cart: arrayRemove(item)
-    });
-  };
-
-  const updateQuantityHandler = async (item, quantity) => {
-    if (quantity < 1) return;
-    const cartRef = doc(db, 'users', userloggeduid);
-    await updateDoc(cartRef, {
-      cart: arrayRemove(item)
-    });
-    await updateDoc(cartRef, {
-      cart: arrayUnion({ ...item, FoodQuantity: quantity })
-    });
-  };
-
-  const totalAmount = cartAlldata.reduce((acc, item) => {
-    const food = foodDataAll.find((food) => food.id === item.item_id);
-    if (food) {
-      acc += food.FoodPrize * (item.FoodQuantity || 1);
-    }
-    return acc;
-  }, 0);
-
   return (
-    <View style={styles.container}>
-      {cartAlldata.length === 0 ? (
-        <EmptyCartView />
-      ) : (
-        <>
-          <CartItemsList 
-            cartAlldata={cartAlldata} 
+    <View style={styles.mainContainer}>
+      <View style={{backgroundColor: '#FF3F00', paddingVertical: 15, paddingHorizontal: 15, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,}}>
+        <TouchableOpacity onPress={() => showPayment ? setShowPayment(false) : navigation.goBack()}>
+          <Ionicons name="arrow-back" size={24} color="white"/>
+        </TouchableOpacity>
+      </View>
+  
+      <View style={styles.container}>
+        {showPayment ? (
+          <PaymentSection
+            cartItems={cartAlldata}
             foodDataAll={foodDataAll}
-            deleteButtonHandler={deleteButtonHandler}
-            updateQuantityHandler={updateQuantityHandler}
+            totalAmount={totalAmount}
+            onBack={() => setShowPayment(false)}
+            onCheckout={handleCheckout}
           />
-          <CheckoutFooter 
-            totalAmount={totalAmount} 
-            onPress={() => navigation.navigate('Checkout', { cartItems: cartAlldata })}
-          />
-        </>
-      )}
+        ) : (
+          <>
+            <Text style={styles.containerHead}>Giỏ hàng</Text>
+            <View style={styles.cartout}>
+              {!cartAlldata || cartAlldata.length === 0 ? (
+                <EmptyCartView />
+              ) : (
+                <>
+                  <CartItemsList 
+                    cartAlldata={cartAlldata}
+                    foodDataAll={foodDataAll}
+                    deleteButtonHandler={deleteButtonHandler}
+                    updateQuantityHandler={updateQuantityHandler}
+                  />
+                  <CheckoutFooter 
+                    totalAmount={totalAmount} 
+                    onPress={() => setShowPayment(true)}
+                  />
+                </>
+              )}
+            </View>
+          </>
+        )}
+      </View>
     </View>
   );
 };
@@ -347,7 +510,7 @@ export default UserCartScreen;
 const styles = StyleSheet.create({
     mainContainer:{
         flex: 1,
-        width: '100%'
+        width: '100%',
     },
 
     loadingContainer: {
@@ -364,15 +527,10 @@ const styles = StyleSheet.create({
   
     scrollView: {
       flex: 1,
-      width: '100%',
     },
   
     scrollContent: {
-      paddingBottom: 100, // Đảm bảo có đủ khoảng trống phía dưới
-    },
-
-    containerCardList: {
-      marginBottom: 10, // Khoảng cách giữa các item
+      paddingBottom: 100,
     },
   
     sectionTitle: {
@@ -580,89 +738,100 @@ const styles = StyleSheet.create({
     },
 
     containerCard: {
-      flexDirection: 'row',
-      backgroundColor: 'white',
-      marginVertical: 8,
-      borderRadius: 15,
-      width: '95%',
-      alignSelf: 'center',
-      elevation: 2,
-      padding: 8,
-      minHeight: 120, // Đảm bảo chiều cao tối thiểu
+        flexDirection: 'row',
+        backgroundColor: 'white',
+        marginVertical: 5,
+        borderRadius: 25,
+        width: '95%',
+        alignSelf: 'center',
+        elevation: 2,
+        alignItems: 'center'
     },
 
     cardimage: {
-      width: 100,
-      height: 100,
-      borderRadius: 12,
-      alignSelf: 'center',
+        width: 100,
+        height: '100%',
+        borderBottomLeftRadius: 25,
+        borderTopLeftRadius: 25
     },
 
     containerCard_in: {
-      flex: 1,
-      flexDirection: 'column',
-      marginLeft: 10,
-      justifyContent: 'space-between',
+        flexDirection: 'column',
+        margin: 5,
+        width: '69%',
+        alignItems: 'flex-end'
     },
 
     containerCard_in1: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        width: '100%',
+        borderRadius: 10,
+        paddingHorizontal: 3,
+        paddingVertical: 2,
+        borderBottomWidth: 1
     },
 
     containerCard_in2: {
-      flex: 1,
-      justifyContent: 'center',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        width: '100%',
+        borderRadius: 10,
+        paddingHorizontal: 3,
+        paddingVertical: 2
     },
 
     containerCard_in3: {
-      flexDirection: 'row',
-      justifyContent: 'flex-end',
-      alignItems: 'center',
-      marginTop: 8,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        width: 100,
+        borderRadius: 20,
+        backgroundColor: '#edeef0',
+        marginVertical: 5,
+        padding: 5,
+        elevation: 2,
+        marginRight: 10
     },
 
     containerCard_in2_itemName: {
-      fontSize: 16,
-      fontWeight: 'bold',
-      marginBottom: 4,
-      color: '#333',
+        fontSize: 16,
+        fontWeight: 'bold',
+        marginBottom: 3
     },
 
     containerCard_in2_itemPrice: {
-      fontSize: 15,
-      fontWeight: '600',
-      color: '#FF3F00',
-      marginBottom: 8,
+        fontSize: 14,
+        fontWeight: '600',
+        marginBottom: 2
     },
 
     containerCard_in3_btn: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: '#f5f5f5',
-      paddingVertical: 6,
-      paddingHorizontal: 12,
-      borderRadius: 20,
+      justifyContent: 'center',
     },
 
     containerCard_in3_btn_txt: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: '#e74c3c',
-      marginLeft: 5,
+      fontSize: 16,
+      fontWeight: 'bold',
+      color: 'black',
+      marginLeft: 5, 
     },
 
     cartout: {
-      flex: 1,
-      width: '100%',
+        flex: 1,
+        width: '100%'
     },
     
     emptyCartContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      height: '100%',
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
     },
 
     emptyIcon: {
@@ -725,47 +894,33 @@ const styles = StyleSheet.create({
     quantityContainer: {
       flexDirection: 'row',
       alignItems: 'center',
+      justifyContent: 'space-between',
       borderWidth: 1,
       borderColor: '#ddd',
       borderRadius: 20,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      width: 100,
     },
   
     quantityButton: {
-      padding: 4,
+      padding: 5,
     },
   
     quantityText: {
-      fontSize: 14,
+      fontSize: 16,
       fontWeight: 'bold',
-      marginHorizontal: 8,
-      color: '#333',
+      marginHorizontal: 10,
     },
   
     quantityRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      marginTop: 8,
+      marginTop: 5,
     },
   
     quantityLabel: {
       fontSize: 14,
-      color: '#666',
+      marginRight: 10,
     },
-
-    footerContainer: {
-      position: 'absolute',
-      bottom: 0,
-      left: 0,
-      right: 0,
-      backgroundColor: 'white',
-      padding: 15,
-      borderTopWidth: 1,
-      borderTopColor: '#eee',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-});
+}); 

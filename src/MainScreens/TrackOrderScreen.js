@@ -1,12 +1,12 @@
-import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, Alert } from 'react-native'
-import React, { useState, useEffect } from 'react'
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, Alert, Platform, StatusBar, SafeAreaView } from 'react-native'
+import React, { useState, useEffect, useContext } from 'react'
 import { collection, query, where, orderBy, onSnapshot, deleteDoc, doc } from 'firebase/firestore'
 import { db } from './../Firebase/FirebaseConfig'
 import { Ionicons } from '@expo/vector-icons';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { AuthContext } from '../Context/AuthContext'; // Import AuthContext
 
 const TrackOrderScreen = ({ navigation }) => {
-  const [userloggeduid, setUserloggeduid] = useState(null); // State để lưu UID của người dùng
+  const { userloggeduid } = useContext(AuthContext); // Lấy UID từ AuthContext
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,21 +34,10 @@ const TrackOrderScreen = ({ navigation }) => {
 
   // Lấy danh sách đơn hàng của user
   useEffect(() => {
-    const auth = getAuth();
-    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUserloggeduid(user.uid); // Lưu UID người dùng
-      } else {
-        setUserloggeduid(null); // Nếu không có người dùng, đặt lại UID
-      }
-    });
+    if (!userloggeduid) return; // Nếu chưa có UID, không gọi Firebase
 
-    let unsubscribe = () => {};
     let isMounted = true;
-
     const fetchOrders = async () => {
-      if (!userloggeduid) return; // Nếu chưa có UID, không gọi Firebase
-
       try {
         const q = query(
           collection(db, 'UserOrder'),
@@ -56,16 +45,16 @@ const TrackOrderScreen = ({ navigation }) => {
           orderBy('createdAt', 'desc')
         );
 
-        unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribe = onSnapshot(q, (snapshot) => {
           if (!isMounted) return;
-          
+
           const ordersData = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data(),
             items: doc.data().items || [],
             createdAt: doc.data().createdAt || new Date().toISOString()
           }));
-          
+
           setOrders(ordersData);
           setLoading(false);
         }, (error) => {
@@ -73,7 +62,6 @@ const TrackOrderScreen = ({ navigation }) => {
           console.error("Lỗi Firestore:", error);
           setLoading(false);
         });
-
       } catch (error) {
         if (!isMounted) return;
         console.error("Lỗi khi lấy đơn hàng:", error);
@@ -85,12 +73,8 @@ const TrackOrderScreen = ({ navigation }) => {
 
     return () => {
       isMounted = false;
-      if (unsubscribe && typeof unsubscribe === 'function') {
-        unsubscribe();
-      }
-      unsubscribeAuth(); // Đảm bảo dừng theo dõi trạng thái người dùng khi component bị unmount
     };
-  }, [userloggeduid]);
+  }, [userloggeduid]); // Gọi lại useEffect khi userloggeduid thay đổi
 
   const deleteOrder = async (orderId) => {
     try {
@@ -131,12 +115,12 @@ const TrackOrderScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={{backgroundColor: '#FF3F00', paddingVertical: 15, paddingHorizontal: 15, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,}}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Theo dõi đơn hàng</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.emptySpace} />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContainer}>
@@ -225,6 +209,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
+    position: 'absolute', 
+    left: 0,
+    right: 0,
+    textAlign: 'center',
+    zIndex: 0,
+    marginTop: 42
+  },
+  emptySpace: {
+    width: 40,
   },
   scrollContainer: {
     paddingVertical: 10,
@@ -338,6 +331,7 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     marginRight: 10,
+    zIndex: 1
   },
   deleteButton: {
     padding: 5,

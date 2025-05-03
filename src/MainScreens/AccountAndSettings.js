@@ -1,22 +1,12 @@
-import { StyleSheet, Text, TouchableOpacity, View, Alert } from 'react-native'
-import React, { useEffect, useState } from 'react'
+import { StyleSheet, Text, TouchableOpacity, View, Alert, Platform, StatusBar, SafeAreaView } from 'react-native'
+import React from 'react'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation } from '@react-navigation/native'
-import { getAuth, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth'
+import { AuthContext } from '../Context/AuthContext'
 
 const AccountAndSettings = () => {
   const navigation = useNavigation()
-  const [user, setUser] = useState(null)
-
-  useEffect(() => {
-    const auth = getAuth()
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user)
-    })
-
-    // Clean up the subscription when the component is unmounted
-    return () => unsubscribe()
-  }, [])
+  const { signOut } = React.useContext(AuthContext)
 
   const handleLogout = () => {
     Alert.alert(
@@ -30,11 +20,9 @@ const AccountAndSettings = () => {
         { 
           text: "Đăng xuất", 
           onPress: async () => {
-            try {
-              await firebaseSignOut(getAuth())
-              navigation.replace('Login') // Điều hướng về màn hình login sau khi đăng xuất
-            } catch (error) {
-              console.error("Đăng xuất thất bại:", error)
+            const success = await signOut()
+            if (success) {
+              navigation.replace('Login')
             }
           },
           style: "destructive"
@@ -43,14 +31,9 @@ const AccountAndSettings = () => {
     )
   }
 
-  if (!user) {
-    // Nếu không có user đăng nhập, bạn có thể điều hướng về trang login ngay lập tức
-    navigation.replace('Login')
-  }
-
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={{backgroundColor: '#FF3F00', paddingVertical: 15, paddingHorizontal: 15, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,}}>
         <Text style={styles.headerText}>Cài đặt</Text>
       </View>
 
@@ -87,7 +70,8 @@ const styles = StyleSheet.create({
   headerText: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: 'bold'
+    fontWeight: 'bold', 
+    textAlign: 'center'
   },
   content: {
     flex: 1,

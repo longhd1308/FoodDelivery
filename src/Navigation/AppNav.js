@@ -1,40 +1,25 @@
-import { StyleSheet, View, ActivityIndicator } from 'react-native';
-import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import React, { useContext, useEffect } from 'react';
 import AppStack from './AppStack';
 import AuthStack from './AuthStack';
-import { onAuthStateChanged } from 'firebase/auth';
-import { auth } from '../Firebase/FirebaseConfig';
+import { AuthContext } from '../Context/AuthContext';
 
 const AppNav = () => {
-  const [user, setUser] = useState(null);
-  const [checking, setChecking] = useState(true);
+  const { userloggeduid, checkIsLogged } = useContext(AuthContext);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setChecking(false);
-    });
-
-    return () => unsubscribe(); // dọn dẹp listener khi unmount
+    checkIsLogged();
   }, []);
 
-  if (checking) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="tomato" />
-      </View>
-    );
-  }
-
-  return user ? <AppStack /> : <AuthStack />;
+  return (
+    <>
+      {userloggeduid ? 
+        <AppStack /> 
+        : 
+        <AuthStack />
+      }
+    </>
+  );
 };
 
 export default AppNav;
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-});

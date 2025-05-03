@@ -7,14 +7,19 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-} from 'react-native';
-import React, { useEffect, useState } from 'react';
+  Platform,
+  StatusBar, 
+  SafeAreaView
+} from 'react-native'
+import React, { useContext, useEffect, useState } from 'react'
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { auth } from '../Firebase/FirebaseConfig';
 import { getFirestore, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { AuthContext } from '../Context/AuthContext';
 import { Picker } from '@react-native-picker/picker';
 
 const UserProfile = () => {
+  const { data1 } = useContext(AuthContext);
   const [userData, setUserData] = useState({
     name: '',
     address: '',
@@ -26,18 +31,17 @@ const UserProfile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [userId, setUserId] = useState(null); // Lưu trữ userId
 
-  // Fetch thông tin người dùng từ Firestore
   const fetchUserData = async () => {
     try {
-      if (!userId) {
+      const user = auth.currentUser;
+      if (!user) {
         Alert.alert('Lỗi', 'Không tìm thấy thông tin người dùng');
         return;
       }
 
       const db = getFirestore();
-      const userDocRef = doc(db, 'UserProfiles', userId);
+      const userDocRef = doc(db, 'UserProfiles', user.uid);
       const docSnap = await getDoc(userDocRef);
 
       if (docSnap.exists()) {
@@ -46,7 +50,7 @@ const UserProfile = () => {
           name: userDataFromFirestore.name || '',
           address: userDataFromFirestore.address || '',
           phone: userDataFromFirestore.phone || '',
-          email: userDataFromFirestore.email || '',
+          email: user.email || '',
           age: userDataFromFirestore.age?.toString() || '',
           gender: userDataFromFirestore.gender || 'Nam'
         });
@@ -61,25 +65,9 @@ const UserProfile = () => {
     }
   };
 
-  // Theo dõi sự thay đổi trạng thái đăng nhập của người dùng
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      if (user) {
-        setUserId(user.uid); // Lưu trữ userId khi người dùng đăng nhập
-      } else {
-        Alert.alert('Lỗi', 'Không tìm thấy người dùng');
-      }
-    });
-
-    return () => unsubscribe();
+    fetchUserData();
   }, []);
-
-  // Gọi fetchUserData sau khi có userId
-  useEffect(() => {
-    if (userId) {
-      fetchUserData();
-    }
-  }, [userId]);
 
   const handleEditToggle = () => {
     setIsEditing(!isEditing);
@@ -111,8 +99,14 @@ const UserProfile = () => {
 
     setIsUpdating(true);
     try {
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert('Lỗi', 'Không tìm thấy người dùng');
+        return;
+      }
+
       const db = getFirestore();
-      const userDocRef = doc(db, 'UserProfiles', userId);
+      const userDocRef = doc(db, 'UserProfiles', user.uid);
 
       await updateDoc(userDocRef, {
         name: userData.name,
@@ -142,124 +136,126 @@ const UserProfile = () => {
   }
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerText}>Hồ Sơ Cá Nhân</Text>
-      </View>
-
-      <View style={styles.profileSection}>
-        <View style={styles.inputContainer}>
-          <Ionicons name="person" size={24} color="#FF3F00" style={styles.icon} />
-          <TextInput
-            style={styles.input}
-            placeholder="Họ và tên"
-            value={userData.name}
-            onChangeText={(text) => handleInputChange('name', text)}
-            editable={isEditing}
-            placeholderTextColor="#888"
-          />
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#FF3F00', paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0, }} edges={['top']}>  
+      <ScrollView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerText}>Hồ Sơ Cá Nhân</Text>
         </View>
 
-        <View style={styles.inputContainer}>
-          <Ionicons name="mail" size={24} color="#FF3F00" style={styles.icon} />
-          <TextInput
-            style={[styles.input, styles.disabledInput]}
-            placeholder="Email"
-            value={userData.email}
-            editable={false}
-            placeholderTextColor="#888"
-          />
-        </View>
-
-        <View style={styles.inputContainer}>
-          <Ionicons name="call" size={24} color="#FF3F00" style={styles.icon} />
-          <TextInput
-            style={styles.input}
-            placeholder="Số điện thoại"
-            value={userData.phone}
-            onChangeText={(text) => handleInputChange('phone', text)}
-            editable={isEditing}
-            keyboardType="phone-pad"
-            maxLength={10}
-            placeholderTextColor="#888"
-          />
-        </View>
-
-        <View style={styles.inputContainer}>
-          <Ionicons name="location" size={24} color="#FF3F00" style={styles.icon} />
-          <TextInput
-            style={styles.input}
-            placeholder="Địa chỉ"
-            value={userData.address}
-            onChangeText={(text) => handleInputChange('address', text)}
-            editable={isEditing}
-            placeholderTextColor="#888"
-          />
-        </View>
-
-        <View style={styles.inputContainer}>
-          <Ionicons name="calendar" size={24} color="#FF3F00" style={styles.icon} />
-          <TextInput
-            style={styles.input}
-            placeholder="Tuổi"
-            value={userData.age}
-            onChangeText={(text) => handleInputChange('age', text)}
-            editable={isEditing}
-            keyboardType="numeric"
-            maxLength={3}
-            placeholderTextColor="#888"
-          />
-        </View>
-
-        {isEditing && (
+        <View style={styles.profileSection}>
           <View style={styles.inputContainer}>
-            <Ionicons name="transgender" size={24} color="#FF3F00" style={styles.icon} />
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={userData.gender}
-                onValueChange={(value) => handleInputChange('gender', value)}
-                style={styles.picker}
-                enabled={isEditing}
-              >
-                <Picker.Item label="Nam" value="Nam" />
-                <Picker.Item label="Nữ" value="Nữ" />
-                <Picker.Item label="Khác" value="Khác" />
-              </Picker>
-            </View>
+            <Ionicons name="person" size={24} color="#FF3F00" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Họ và tên"
+              value={userData.name}
+              onChangeText={(text) => handleInputChange('name', text)}
+              editable={isEditing}
+              placeholderTextColor="#888"
+            />
           </View>
-        )}
-      </View>
 
-      {isEditing ? (
-        <View style={styles.buttonGroup}>
-          <TouchableOpacity 
-            style={[styles.button, styles.saveButton]} 
-            onPress={handleUpdateProfile}
-            disabled={isUpdating}
-          >
-            {isUpdating ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Lưu thay đổi</Text>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.button, styles.cancelButton]} 
-            onPress={handleEditToggle}
-            disabled={isUpdating}
-          >
-            <Text style={[styles.buttonText, {color: '#FF3F00'}]}>Hủy</Text>
-          </TouchableOpacity>
+          <View style={styles.inputContainer}>
+            <Ionicons name="mail" size={24} color="#FF3F00" style={styles.icon} />
+            <TextInput
+              style={[styles.input, styles.disabledInput]}
+              placeholder="Email"
+              value={userData.email}
+              editable={false}
+              placeholderTextColor="#888"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Ionicons name="call" size={24} color="#FF3F00" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Số điện thoại"
+              value={userData.phone}
+              onChangeText={(text) => handleInputChange('phone', text)}
+              editable={isEditing}
+              keyboardType="phone-pad"
+              maxLength={10}
+              placeholderTextColor="#888"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Ionicons name="location" size={24} color="#FF3F00" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Địa chỉ"
+              value={userData.address}
+              onChangeText={(text) => handleInputChange('address', text)}
+              editable={isEditing}
+              placeholderTextColor="#888"
+            />
+          </View>
+
+          <View style={styles.inputContainer}>
+            <Ionicons name="calendar" size={24} color="#FF3F00" style={styles.icon} />
+            <TextInput
+              style={styles.input}
+              placeholder="Tuổi"
+              value={userData.age}
+              onChangeText={(text) => handleInputChange('age', text)}
+              editable={isEditing}
+              keyboardType="numeric"
+              maxLength={3}
+              placeholderTextColor="#888"
+            />
+          </View>
+
+          {isEditing && (
+            <View style={styles.inputContainer}>
+              <Ionicons name="transgender" size={24} color="#FF3F00" style={styles.icon} />
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={userData.gender}
+                  onValueChange={(value) => handleInputChange('gender', value)}
+                  style={styles.picker}
+                  enabled={isEditing}
+                >
+                  <Picker.Item label="Nam" value="Nam" />
+                  <Picker.Item label="Nữ" value="Nữ" />
+                  <Picker.Item label="Khác" value="Khác" />
+                </Picker>
+              </View>
+            </View>
+          )}
         </View>
-      ) : (
-        <TouchableOpacity 
-          style={[styles.button, styles.editButton]} 
-          onPress={handleEditToggle}
-        >
-          <Text style={styles.buttonText}>Chỉnh sửa hồ sơ</Text>
-        </TouchableOpacity>
-      )}
-    </ScrollView>
+
+        {isEditing ? (
+          <View style={styles.buttonGroup}>
+            <TouchableOpacity 
+              style={[styles.button, styles.saveButton]} 
+              onPress={handleUpdateProfile}
+              disabled={isUpdating}
+            >
+              {isUpdating ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.buttonText}>Lưu thay đổi</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.button, styles.cancelButton]} 
+              onPress={handleEditToggle}
+              disabled={isUpdating}
+            >
+              <Text style={[styles.buttonText, {color: '#FF3F00'}]}>Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity 
+            style={[styles.button, styles.editButton]} 
+            onPress={handleEditToggle}
+          >
+            <Text style={styles.buttonText}>Chỉnh sửa hồ sơ</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
